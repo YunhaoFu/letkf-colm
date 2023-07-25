@@ -213,32 +213,18 @@ INCLUDE "./m_parameter.h"
 
             CALL check(NF90_CLOSE(ncid))
 
-            ! calculate the number of patches of each gridpoint
             grid2patch_count = 0
-            do np=1, numpatch
-              i = ixy_patch(np)
-              j = jxy_patch(np)
-              grid2patch_count(i,j) = grid2patch_count(i,j) + 1
+            do k=1, numpatch
+                i = ixy_patch(k)
+                j = jxy_patch(k)
+                grid2patch_count(i,j) = grid2patch_count(i,j) + 1
+                if(first_save .or. (i /= i_save .or. j /= j_save)) then
+                    first_save = .false.
+                    i_save = i
+                    j_save = j
+                    grid2patch_start(i,j) = k
+                endif
             enddo
-            ! calculate the start of patches of each gridpoint
-            np = 1
-            do j=1, lat_points
-              do i=1, lon_points
-                grid2patch_start(i,j) = np
-
-                np = np + grid2patch_count(i,j)
-              enddo
-            enddo
-            ! put the patches of each gridpoint into
-            do np=1, numpatch
-              i = ixy_patch(np)
-              j = jxy_patch(np)
-
-              grid2patch(grid2patch_start(i,j)) = np
-              grid2patch_start(i,j) = grid2patch_start(i,j) + 1
-            enddo
-            ! recover grid2patch_start
-            grid2patch_start = grid2patch_start - grid2patch_count
 
             sumwt = 0.0_r8
             do np = 1, numpatch
@@ -537,141 +523,6 @@ INCLUDE "./m_parameter.h"
             PRINT *, "omb      :  ", MINVAL(          omb(1:obs_count)), MAXVAL(    omb(1:obs_count))
 
         ENDSUBROUTINE innovation_check
-
-        SUBROUTINE diag_write
-            character(len=256) :: dfile
-
-            write(dfile, "(A, '/diag_', I0, '-', I3.3, '-', I5.5, '.nc')") TRIM(diag_dir), idate(1), idate(2), idate(3)
-            PRINT *, TRIM(dfile)
-
-            CALL check(nf90_create(TRIM(dfile), NF90_64BIT_OFFSET, ncid))
-
-            CALL check(nf90_def_dim(ncid, "lon"          , lon_points   , nx))
-            CALL check(nf90_def_dim(ncid, "lat"          , lat_points   , ny))
-            CALL check(nf90_def_dim(ncid, "station_raw"  , obs_count_r  , ns1))
-            CALL check(nf90_def_dim(ncid, "station"      , obs_count    , ns2))
-            CALL check(nf90_def_dim(ncid, "ensemble"     , ens_size     , ens))
-            CALL check(nf90_def_dim(ncid, "numpatch"     , numpatch     , npatch))
-            CALL check(nf90_def_dim(ncid, "maxpatch"     , maxpatch     , mnp))
-
-            CALL check(nf90_put_att(ncid, nf90_global, "model lat: 0->no reverse; 1-> reverse",m_lat_rever))
-
-            CALL check(nf90_def_var(ncid, "lon"          , nf90_real, (/nx/), vid))
-            CALL check(nf90_def_var(ncid, "lat"          , nf90_real, (/ny/), vid))
-
-            CALL check(nf90_def_var(ncid, "y_lon_raw"    , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "y_lat_raw"    , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "y_lon_cnt_raw", nf90_int, (/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "y_lat_cnt_raw", nf90_int, (/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "y_raw"        , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "t_raw"        , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "u_raw"        , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "y_dep_raw"    , nf90_real,(/ns1/), vid))
-            CALL check(nf90_def_var(ncid, "hx_raw"       ,nf90_real,(/ens,ns1/), vid))
-
-            CALL check(nf90_def_var(ncid, "y_lon"        , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "y_lat"        , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "y_lon_cnt"    , nf90_int, (/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "y_lat_cnt"    , nf90_int, (/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "y"            , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "t"            , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "u"            , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "y_dep"        , nf90_real,(/ns2/), vid))
-            CALL check(nf90_def_var(ncid, "hx"           ,nf90_real,(/ens,ns2/), vid))
-        
-            CALL check(nf90_def_var(ncid, "itywat" ,nf90_int , (/npatch/), vid))
-            CALL check(nf90_def_var(ncid, "ivt "   ,nf90_int , (/npatch/), vid))
-            CALL check(nf90_def_var(ncid, "ipatch" ,nf90_int , (/npatch/), vid))
-            CALL check(nf90_def_var(ncid, "jpatch" ,nf90_int , (/npatch/), vid))
-            CALL check(nf90_def_var(ncid, "wpatch" ,nf90_real, (/npatch/), vid))
-            CALL check(nf90_def_var(ncid, "mask" ,nf90_int , (/nx,ny/), vid))
-            CALL check(nf90_def_var(ncid, "grid2patch_count" ,nf90_int , (/nx,ny/), vid))
-            CALL check(nf90_def_var(ncid, "grid2patch_start" ,nf90_int , (/nx,ny,mnp/), vid))
-
-            CALL check(nf90_def_var(ncid, "lb"   ,nf90_int, (/npatch,ens/), vid))
-            CALL check(nf90_put_att(ncid, vid, "long name", &
-               "lowest bound for the wliq+wice"))
-
-            CALL check(nf90_def_var(ncid, "tg"     ,nf90_real, (/npatch,ens/), vid))
-            CALL check(nf90_def_var(ncid, "tsun"   ,nf90_real, (/npatch,ens/), vid))
-            CALL check(nf90_def_var(ncid, "tsha"   ,nf90_real, (/npatch,ens/), vid))
-
-            CALL check(nf90_enddef(ncid))
-
-            CALL check(nf90_inq_varid(ncid, "lon", vid))
-            CALL check(nf90_put_var  (ncid, vid  , longxy(1:lon_points,1)))
-            CALL check(nf90_inq_varid(ncid, "lat", vid))
-            CALL check(nf90_put_var  (ncid, vid  , latixy(1,1:lat_points)))
-
-            CALL check(nf90_inq_varid(ncid, "y_lon_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  , obs_lon_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "y_lat_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  , obs_lat_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "y_lon_cnt_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  , lon_cnt_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "y_lat_cnt_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  , lat_cnt_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "y_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,       y_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "t_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,      dt_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "u_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,       u_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "y_dep_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,     omb_r(1:obs_count_r)))
-            CALL check(nf90_inq_varid(ncid, "hx_raw", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,hx_r(1:ens_size,1:obs_count_r)))
-
-            CALL check(nf90_inq_varid(ncid, "y_lon", vid))
-            CALL check(nf90_put_var  (ncid, vid  , obs_lon(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "y_lat", vid))
-            CALL check(nf90_put_var  (ncid, vid  , obs_lat(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "y_lon_cnt", vid))
-            CALL check(nf90_put_var  (ncid, vid  , lon_cnt(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "y_lat_cnt", vid))
-            CALL check(nf90_put_var  (ncid, vid  , lat_cnt(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "y", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,       y(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "t", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,      dt(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "u", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,       u(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "y_dep", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,     omb(1:obs_count)))
-            CALL check(nf90_inq_varid(ncid, "hx", vid))
-            CALL check(nf90_put_var  (ncid, vid  ,hx(1:ens_size,1:obs_count)))
-
-            CALL check(nf90_inq_varid(ncid, "itywat", vid))
-            CALL check(nf90_put_var  (ncid, vid  , itywat))
-            CALL check(nf90_inq_varid(ncid, "ivt", vid))
-            CALL check(nf90_put_var  (ncid, vid  , ivt))
-            CALL check(nf90_inq_varid(ncid, "ipatch", vid))
-            CALL check(nf90_put_var  (ncid, vid  , ixy_patch))
-            CALL check(nf90_inq_varid(ncid, "jpatch", vid))
-            CALL check(nf90_put_var  (ncid, vid  , jxy_patch))
-            CALL check(nf90_inq_varid(ncid, "wpatch", vid))
-            CALL check(nf90_put_var  (ncid, vid  , wtxy_patch))
-            CALL check(nf90_inq_varid(ncid, "mask"  , vid))
-            CALL check(nf90_put_var  (ncid, vid  , mask))
-            CALL check(nf90_inq_varid(ncid, "grid2patch_count"  , vid))
-            CALL check(nf90_put_var  (ncid, vid  , grid2patch_count))
-            CALL check(nf90_inq_varid(ncid, "grid2patch_start"  , vid))
-            CALL check(nf90_put_var  (ncid, vid  , grid2patch_start))
-
-            CALL check(nf90_inq_varid(ncid, "lb"    , vid))
-            CALL check(nf90_put_var  (ncid, vid  , lb_patch+1))
-
-            CALL check(nf90_inq_varid(ncid, "tg"    , vid))
-            CALL check(nf90_put_var  (ncid, vid  , x_ens(1,1:numpatch,1:ens_size)))
-            CALL check(nf90_inq_varid(ncid, "tsun"  , vid))
-            CALL check(nf90_put_var  (ncid, vid  , x_ens(2,1:numpatch,1:ens_size)))
-            CALL check(nf90_inq_varid(ncid, "tsha"  , vid))
-            CALL check(nf90_put_var  (ncid, vid  , x_ens(3,1:numpatch,1:ens_size)))
-
-
-            CALL check(nf90_close(ncid))
-
-        ENDSUBROUTINE diag_write
 
         SUBROUTINE obs_deallocate
             DEALLOCATE(obs_lon_r)
