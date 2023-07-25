@@ -22,7 +22,7 @@ INCLUDE "./m_parameter.h"
 
     PUBLIC          ::   gridpoint, ens_read, read_invar,&
                          innovation_check, ens_write, &
-                         obs_allocate, obs_deallocate, diag_write, &
+                         obs_allocate, obs_deallocate, &
                          model_allocate, model_deallocate
 
     PUBLIC          ::      latixy, longxy, &
@@ -64,6 +64,7 @@ INCLUDE "./m_parameter.h"
     REAL(r8),ALLOCATABLE          ::   tr_patch (:)
     REAL(r8),ALLOCATABLE          ::   x_ens    (:,:,:)
     INTEGER ,ALLOCATABLE          ::   lb_patch (:,:)
+    REAL(r8),ALLOCATABLE          ::   sc_patch (:,:)
     !                model state grid                  !
     REAL(r8),PARAMETER            ::   fv = -999.0
     REAL(r8),ALLOCATABLE          ::   longxy(:,:)
@@ -174,6 +175,8 @@ INCLUDE "./m_parameter.h"
         SUBROUTINE read_invar
             character(len=256) :: mfile  ! member file
             integer, parameter :: ens_tmp = 1
+            logical            :: first_save = .true.
+            integer            :: i_save, j_save
 
             write(mfile, "('bkg.', I3.3)") ens_tmp
 
@@ -214,15 +217,15 @@ INCLUDE "./m_parameter.h"
             CALL check(NF90_CLOSE(ncid))
 
             grid2patch_count = 0
-            do k=1, numpatch
-                i = ixy_patch(k)
-                j = jxy_patch(k)
+            do np=1, numpatch
+                i = ixy_patch(np)
+                j = jxy_patch(np)
                 grid2patch_count(i,j) = grid2patch_count(i,j) + 1
                 if(first_save .or. (i /= i_save .or. j /= j_save)) then
                     first_save = .false.
                     i_save = i
                     j_save = j
-                    grid2patch_start(i,j) = k
+                    grid2patch_start(i,j) = np
                 endif
             enddo
 
@@ -263,6 +266,7 @@ INCLUDE "./m_parameter.h"
             ALLOCATE(x_ens      (da_cnt,numpatch          ,ens_size))
             ALLOCATE(tr_patch   (numpatch                          ))
             ALLOCATE(lb_patch   (numpatch                 ,ens_size))
+            ALLOCATE(sc_patch   (numpatch                 ,ens_size))
             hx_ens   =  0.0_r8
             lb_patch =  0
 
@@ -304,7 +308,7 @@ INCLUDE "./m_parameter.h"
             CALL check(NF90_CLOSE(ncid))
 
             ! read Y
-            tr_patch(1:numpatch                     ) = var_patch(1:numpatch,49)
+            tr_patch(1:numpatch                     ) = var_patch(1:numpatch,50)
             PRINT *, "trad: ", MINVAL(tr_patch(1:numpatch                     )), MAXVAL(tr_patch(1:numpatch                     ))
 
             ! transform Y from patch to grid
@@ -330,6 +334,7 @@ INCLUDE "./m_parameter.h"
             x_ens (1,1:numpatch                 ,ens) = var_patch(1:numpatch,46)
             x_ens (3,1:numpatch                 ,ens) = var_patch(1:numpatch,47)
             x_ens (4,1:numpatch                 ,ens) = var_patch(1:numpatch,48)
+            sc_patch(1:numpatch                 ,ens) = var_patch(1:numpatch,49)
 
             DO np=1,numpatch
                 ! TODO only concern itywat <=3: soil => 0; urban and built-up => 1; wetland => 2; land ice => 3
@@ -392,11 +397,13 @@ INCLUDE "./m_parameter.h"
             DEALLOCATE(x_ens      )
             DEALLOCATE(tr_patch   )
             DEALLOCATE(lb_patch   )
+            DEALLOCATE(sc_patch   )
 
         ENDSUBROUTINE ens_write
 
         SUBROUTINE ana_write(mfile)
            character(len=*), intent(in) :: mfile
+           real(r8)                     :: scv
 
             CALL check(NF90_OPEN(TRIM(mfile), nf90_write, ncid))
 
@@ -413,6 +420,11 @@ INCLUDE "./m_parameter.h"
             DO np=1,numpatch
                 ! TODO only concern itywat <=3: soil => 0; urban and built-up => 1; wetland => 2; land ice => 3
                 IF(itywat(np) > 3) CYCLE
+                scv = 0.0_r8
+                DO nl=maxsnl+1,0
+                    scv = scv + wl_patch(np,nl,ens) + wi_patch(np,nl,ens)
+                ENDDO
+                sc_patch(np,ens) = scv
                 ts_patch(np,lb_patch(np,ens)+1,ens) = x_ens(1,np,ens)
                 ts_patch(np,lb_patch(np,ens)+0,ens) = x_ens(2,np,ens)
                 wl_patch(np,lb_patch(np,ens)+1,ens) = x_ens(5,np,ens)
@@ -438,6 +450,7 @@ INCLUDE "./m_parameter.h"
             var_patch(1:numpatch,46)    = x_ens (1,1:numpatch                 ,ens)
             var_patch(1:numpatch,47)    = x_ens (3,1:numpatch                 ,ens)
             var_patch(1:numpatch,48)    = x_ens (4,1:numpatch                 ,ens)
+            var_patch(1:numpatch,49)    = sc_patch(1:numpatch                 ,ens)
 
             PRINT *, "tss[1] : ", MINVAL(x_ens (1,1:numpatch,ens)), MAXVAL(x_ens (1,1:numpatch,ens))
             PRINT *, "tss[2] : ", MINVAL(x_ens (2,1:numpatch,ens)), MAXVAL(x_ens (2,1:numpatch,ens))
